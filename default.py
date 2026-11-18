@@ -55,9 +55,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.3.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.4.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.3"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.4"
 
 # Exact product-owned packages.  The uninstall route intentionally does not discover packages
 # by filesystem wildcard: a future third-party add-on must never be removed merely because its
@@ -180,8 +180,6 @@ def install(addon_id, expected_version, monitor):
             return True
         if monitor.waitForAbort(0.25):
             return False
-    if not handed_back:
-        return_to_package(return_package)
     return False
 
 
@@ -211,8 +209,6 @@ def ensure_official_dependency(addon_id, minimum_version, monitor, seconds=90):
                 return False
         if monitor.waitForAbort(0.25):
             return False
-    if not handed_back:
-        return_to_package(return_package)
     return False
 
 
@@ -256,8 +252,6 @@ def activate_skin(monitor):
             # stable seconds with the intended skin active and no pending confirmation.
             stable_polls += 1
             if stable_polls >= 20:
-                if not handed_back:
-                    return_to_package(return_package)
                 return True
         else:
             stable_polls = 0

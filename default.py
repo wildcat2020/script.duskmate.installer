@@ -55,9 +55,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.1.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.2.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.1"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.2"
 def installed(addon_id):
     return xbmc.getCondVisibility("System.HasAddon({})".format(addon_id))
 
@@ -119,12 +119,11 @@ def foreground_kodi(monitor):
     return not monitor.waitForAbort(0.75)
 
 
-def return_after_confirmation(return_package, monitor):
-    """Leave Kodi as soon as its affirmative native confirmation has closed."""
+def approve_native_confirmation(monitor):
+    """Approve the exact Kodi confirmation and wait until it has closed."""
     for _ in range(40):
         if not xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
-            return_to_package(return_package)
-            return not monitor.waitForAbort(0.5)
+            return True
         if monitor.waitForAbort(0.05):
             return False
     xbmc.log(
@@ -134,7 +133,7 @@ def return_after_confirmation(return_package, monitor):
     return False
 
 
-def install(addon_id, expected_version, monitor, return_package):
+def install(addon_id, expected_version, monitor):
     current = installed_version(addon_id) or "not installed"
     xbmc.log(
         "Duskmate installer: installing/updating {} from {} to {}".format(
@@ -147,14 +146,12 @@ def install(addon_id, expected_version, monitor, return_package):
     if not foreground_kodi(monitor):
         return False
     xbmc.executebuiltin("InstallAddon({})".format(addon_id))
-    handed_back = False
     refresh_tick = 0
     for _ in range(720):
         if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
             xbmc.executebuiltin("SendClick(10100,11)")
-            if not return_after_confirmation(return_package, monitor):
+            if not approve_native_confirmation(monitor):
                 return False
-            handed_back = True
         # Refresh Kodi's add-on registry once per second rather than flooding it four times
         # per second while a package is being downloaded or unpacked.
         if refresh_tick % 4 == 0:
@@ -163,8 +160,6 @@ def install(addon_id, expected_version, monitor, return_package):
                 enable_addon(addon_id)
         refresh_tick += 1
         if ready(addon_id, expected_version):
-            if not handed_back:
-                return_to_package(return_package)
             return True
         if monitor.waitForAbort(0.25):
             return False
@@ -173,9 +168,7 @@ def install(addon_id, expected_version, monitor, return_package):
     return False
 
 
-def ensure_official_dependency(
-    addon_id, minimum_version, monitor, return_package, seconds=90
-):
+def ensure_official_dependency(addon_id, minimum_version, monitor, seconds=90):
     """Install only dependencies distributed by Kodi's official repository."""
     if installed_version(addon_id):
         return True
@@ -188,11 +181,8 @@ def ensure_official_dependency(
     if not foreground_kodi(monitor):
         return False
     xbmc.executebuiltin("InstallAddon({})".format(addon_id))
-    handed_back = False
     for _ in range(seconds * 4):
         if installed_version(addon_id):
-            if not handed_back:
-                return_to_package(return_package)
             return True
         # InstallAddon opens Kodi's native confirmation dialog on a clean profile. The viewer
         # already approved this exact dependency through Duskmate's package-specific Install
@@ -200,9 +190,8 @@ def ensure_official_dependency(
         # to whichever Kodi window happens to be visible.
         if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
             xbmc.executebuiltin("SendClick(10100,11)")
-            if not return_after_confirmation(return_package, monitor):
+            if not approve_native_confirmation(monitor):
                 return False
-            handed_back = True
         if monitor.waitForAbort(0.25):
             return False
     if not handed_back:
@@ -210,7 +199,7 @@ def ensure_official_dependency(
     return False
 
 
-def activate_skin(monitor, return_package):
+def activate_skin(monitor):
     """Activate only the pinned Duskmate skin and accept only Kodi's exact confirm dialog."""
     if xbmc.getSkinDir() == "skin.duskmate":
         return True
@@ -236,15 +225,13 @@ def activate_skin(monitor, return_package):
     if not foreground_kodi(monitor):
         return False
     stable_polls = 0
-    handed_back = False
     for _ in range(120):
         if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
             # DialogConfirm control 11 is the affirmative button. SendClick targets that exact
             # window/control pair and cannot activate a different Kodi screen accidentally.
             xbmc.executebuiltin("SendClick(10100,11)")
-            if not return_after_confirmation(return_package, monitor):
+            if not approve_native_confirmation(monitor):
                 return False
-            handed_back = True
             stable_polls = 0
         elif xbmc.getSkinDir() == "skin.duskmate":
             # Kodi can show a second "keep this skin?" dialog shortly after the new skin first
@@ -289,9 +276,7 @@ def _deploy(
         # short, security-sensitive phase. Returning to Duskmate before InstallAddon finishes
         # leaves a hidden dialog that cannot be targeted by Window.IsActive on Android TV.
         for addon_id, minimum_version in OFFICIAL_DEPENDENCIES:
-            if not ensure_official_dependency(
-                addon_id, minimum_version, monitor, return_package
-            ):
+            if not ensure_official_dependency(addon_id, minimum_version, monitor):
                 xbmc.log(
                     "Duskmate installer: official dependency unavailable: {}".format(addon_id),
                     xbmc.LOGERROR,
@@ -313,7 +298,7 @@ def _deploy(
         if monitor.abortRequested():
             return
         if not ready(addon_id, expected_version):
-            if not install(addon_id, expected_version, monitor, return_package):
+            if not install(addon_id, expected_version, monitor):
                 xbmc.log("Duskmate installer: installation timed out for {}".format(addon_id), xbmc.LOGERROR)
                 return
         if not wait_for(addon_id, expected_version, monitor):
@@ -325,9 +310,7 @@ def _deploy(
         enable_addon(addon_id)
         xbmc.executebuiltin("UpdateLocalAddons")
         monitor.waitForAbort(0.25)
-        if addon_id == "skin.duskmate" and not activate_skin(
-            monitor, return_package
-        ):
+        if addon_id == "skin.duskmate" and not activate_skin(monitor):
             xbmc.log("Duskmate installer: Duskmate skin activation failed", xbmc.LOGERROR)
             return
 

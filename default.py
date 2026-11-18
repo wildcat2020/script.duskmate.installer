@@ -55,9 +55,26 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.2.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.3.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.2"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.3"
+
+# Exact product-owned packages.  The uninstall route intentionally does not discover packages
+# by filesystem wildcard: a future third-party add-on must never be removed merely because its
+# name happens to contain "duskmate".
+DUSKMATE_PACKAGES = (
+    "service.duskmate.upnext",
+    "script.module.duskmate.sync.trakt",
+    "script.module.duskmate.sync.kodi",
+    "script.module.duskmate.sync.mdblist",
+    "script.module.duskmate.sync.tvdb",
+    "plugin.video.duskmate",
+    "script.module.duskmate.infotagger",
+    "script.module.duskmate.common",
+    "skin.duskmate",
+    "repository.duskmate",
+    "script.duskmate.installer",
+)
 def installed(addon_id):
     return xbmc.getCondVisibility("System.HasAddon({})".format(addon_id))
 
@@ -385,12 +402,91 @@ def enabled(values, key):
     return values.get(key, "").lower() in ("1", "true", "yes", "on")
 
 
+def remove_tree(path):
+    """Remove one exact Kodi directory and report whether it is now absent."""
+    if not xbmcvfs.exists(path):
+        return True
+    xbmcvfs.rmdir(path, True)
+    return not xbmcvfs.exists(path)
+
+
+def uninstall_duskmate(return_package=DUSKMATE_ANDROID_PACKAGE):
+    """Remove only product-owned Kodi packages while preserving the user's Kodi profile.
+
+    This is deliberately an explicit installer action.  It does not touch Kodi's video/music
+    databases, sources, thumbnails, unrelated add-ons, or generated library media.
+    """
+    monitor = xbmc.Monitor()
+    failures = []
+
+    # Kodi cannot remove its active skin.  Move to the stock skin first and allow its resources
+    # to settle before deleting the Duskmate skin package.
+    if xbmc.getSkinDir() == "skin.duskmate":
+        json_rpc("Settings.SetSettingValue", {
+            "setting": "lookandfeel.skin",
+            "value": "skin.estuary",
+        })
+        for _ in range(40):
+            if xbmc.getSkinDir() != "skin.duskmate":
+                break
+            if monitor.waitForAbort(0.25):
+                return
+        if xbmc.getSkinDir() == "skin.duskmate":
+            xbmc.log("Duskmate installer: could not leave the active Duskmate skin", xbmc.LOGERROR)
+            return
+
+    # Disable first so no service can race its own removal.  Remove the executable bridge last;
+    # Python has already loaded this module, so the current invocation can finish safely.
+    for addon_id in DUSKMATE_PACKAGES:
+        if addon_id != "script.duskmate.installer" and installed_version(addon_id):
+            json_rpc("Addons.SetAddonEnabled", {"addonid": addon_id, "enabled": False})
+
+    for addon_id in DUSKMATE_PACKAGES:
+        if addon_id == "script.duskmate.installer":
+            continue
+        addon_path = xbmcvfs.translatePath("special://home/addons/{}/".format(addon_id))
+        data_path = xbmcvfs.translatePath("special://profile/addon_data/{}/".format(addon_id))
+        if not remove_tree(addon_path):
+            failures.append(addon_path)
+        if not remove_tree(data_path):
+            failures.append(data_path)
+
+    # Remove only cached packages whose filename starts with one of the exact package IDs.
+    packages_path = xbmcvfs.translatePath("special://home/addons/packages/")
+    _, package_files = xbmcvfs.listdir(packages_path)
+    for filename in package_files:
+        if any(filename.startswith(addon_id + "-") for addon_id in DUSKMATE_PACKAGES):
+            xbmcvfs.delete(os.path.join(packages_path, filename))
+
+    installer_data = xbmcvfs.translatePath(
+        "special://profile/addon_data/script.duskmate.installer/"
+    )
+    installer_path = xbmcvfs.translatePath(
+        "special://home/addons/script.duskmate.installer/"
+    )
+    if not remove_tree(installer_data):
+        failures.append(installer_data)
+    if not remove_tree(installer_path):
+        failures.append(installer_path)
+
+    xbmc.executebuiltin("UpdateLocalAddons")
+    xbmc.log(
+        "Duskmate installer: scoped uninstall {}".format(
+            "failed: {}".format(", ".join(failures)) if failures else "complete"
+        ),
+        xbmc.LOGERROR if failures else xbmc.LOGINFO,
+    )
+    return_to_package(return_package)
+
+
 if __name__ == "__main__":
     args = arguments()
     action = args.get("action", "install").lower()
     return_package = args.get("return_package", DUSKMATE_ANDROID_PACKAGE)
     if action == "return":
         return_to_package(return_package)
+    elif action == "uninstall":
+        uninstall_duskmate(return_package=return_package)
     elif action == "install":
         deploy(
             force=True,

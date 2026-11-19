@@ -55,9 +55,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.6.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.7.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.6"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.7"
 
 # Exact product-owned packages.  The uninstall route intentionally does not discover packages
 # by filesystem wildcard: a future third-party add-on must never be removed merely because its
@@ -236,7 +236,21 @@ def activate_skin(monitor):
     # "Add-on required" download prompt even after the pinned skin has been installed and
     # enabled. LoadSkin is Kodi's dedicated skin built-in: it switches only to the already
     # registered add-on and avoids treating activation as another installation request.
-    xbmc.executebuiltin("LoadSkin(skin.duskmate)")
+    xbmc.executebuiltin("LoadSkin(skin.duskmate)", True)
+    # Kodi 21 on some Android TV firmware acknowledges LoadSkin before its GUI thread applies
+    # the registered skin. Give that dedicated route a bounded chance first, then use the same
+    # setting mutation Kodi's Interface screen uses. At this point the exact pinned add-on has
+    # already been registered and enabled, so the fallback cannot be interpreted as a download.
+    for _ in range(20):
+        if xbmc.getSkinDir() == "skin.duskmate":
+            break
+        if monitor.waitForAbort(0.25):
+            return False
+    if xbmc.getSkinDir() != "skin.duskmate" and not json_rpc("Settings.SetSettingValue", {
+        "setting": "lookandfeel.skin",
+        "value": "skin.duskmate",
+    }):
+        return False
     stable_polls = 0
     for _ in range(120):
         if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):

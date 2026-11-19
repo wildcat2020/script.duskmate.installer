@@ -55,9 +55,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.8.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.9.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.8"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.9"
 
 # Exact product-owned packages.  The uninstall route intentionally does not discover packages
 # by filesystem wildcard: a future third-party add-on must never be removed merely because its
@@ -181,7 +181,7 @@ def install(addon_id, expected_version, monitor):
         # producing "Unknown addon id". Reissue the same idempotent request at a bounded
         # interval while the exact pinned version is still absent. This also recovers from a
         # repository refresh that completed after the initial request without flooding Kodi.
-        if refresh_tick and refresh_tick % 20 == 0 and not installed_version(addon_id):
+        if refresh_tick and refresh_tick % 120 == 0 and not installed_version(addon_id):
             xbmc.executebuiltin("UpdateAddonRepos")
             xbmc.executebuiltin("InstallAddon({})".format(addon_id))
         refresh_tick += 1

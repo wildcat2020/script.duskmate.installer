@@ -29,6 +29,10 @@ def return_to_duskmate():
             DUSKMATE_RETURN_URI,
         )
     )
+    # Some vendor builds acknowledge the explicit deep link without moving the existing TV
+    # task to the foreground. The package launch is an idempotent fallback to that same task.
+    xbmc.sleep(500)
+    xbmc.executebuiltin("StartAndroidActivity({})".format(DUSKMATE_ANDROID_PACKAGE))
 
 
 def return_to_package(package):
@@ -138,6 +142,21 @@ def foreground_kodi(monitor):
 
 def approve_native_confirmation(monitor):
     """Approve the exact Kodi confirmation and wait until it has closed."""
+    for _ in range(10):
+        if not xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
+            return True
+        if monitor.waitForAbort(0.05):
+            return False
+    # DialogConfirm control ids differ across Kodi/skin combinations. SendClick is the safest
+    # first attempt; if that exact yes/no dialog remains, move from Kodi's default negative
+    # button to the affirmative button and select it. Never issue these actions on another
+    # window. The calling install operation was explicitly approved in Duskmate.
+    if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
+        xbmc.executebuiltin("Action(Left)")
+        if monitor.waitForAbort(0.1):
+            return False
+    if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
+        xbmc.executebuiltin("Action(Select)")
     for _ in range(40):
         if not xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
             return True

@@ -439,16 +439,35 @@ def uninstall_duskmate(return_package=DUSKMATE_ANDROID_PACKAGE):
     # Kodi cannot remove its active skin.  Move to the stock skin first and allow its resources
     # to settle before deleting the Duskmate skin package.
     if xbmc.getSkinDir() == "skin.duskmate":
-        json_rpc("Settings.SetSettingValue", {
+        if not json_rpc("Settings.SetSettingValue", {
             "setting": "lookandfeel.skin",
             "value": "skin.estuary",
-        })
-        for _ in range(40):
-            if xbmc.getSkinDir() != "skin.duskmate":
-                break
+        }):
+            xbmc.log("Duskmate installer: could not request the Estuary skin", xbmc.LOGERROR)
+            return
+
+        # Kodi asks whether the newly selected skin should be kept. The uninstall action is
+        # already an explicit user-approved operation, so approve that exact native dialog just
+        # as the install path approves activation of the Duskmate skin. Without this, Kodi can
+        # briefly report Estuary and then revert while the script waits, leaving the active skin
+        # package impossible to remove.
+        stable_polls = 0
+        for _ in range(120):
+            if xbmc.getCondVisibility("Window.IsActive(yesnodialog)"):
+                xbmc.executebuiltin("SendClick(10100,11)")
+                if not approve_native_confirmation(monitor):
+                    xbmc.log("Duskmate installer: Estuary confirmation failed", xbmc.LOGERROR)
+                    return
+                stable_polls = 0
+            elif xbmc.getSkinDir() == "skin.estuary":
+                stable_polls += 1
+                if stable_polls >= 20:
+                    break
+            else:
+                stable_polls = 0
             if monitor.waitForAbort(0.25):
                 return
-        if xbmc.getSkinDir() == "skin.duskmate":
+        if xbmc.getSkinDir() != "skin.estuary":
             xbmc.log("Duskmate installer: could not leave the active Duskmate skin", xbmc.LOGERROR)
             return
 

@@ -55,9 +55,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.4.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.5.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.4"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.5"
 
 # Exact product-owned packages.  The uninstall route intentionally does not discover packages
 # by filesystem wildcard: a future third-party add-on must never be removed merely because its
@@ -484,6 +484,7 @@ if __name__ == "__main__":
     elif action == "install":
         deploy(
             force=True,
+            include_helper=(enabled(args, "helper") if "helper" in args else True),
             include_skin=enabled(args, "skin"),
             include_upnext=enabled(args, "upnext"),
             include_trakt=enabled(args, "trakt"),

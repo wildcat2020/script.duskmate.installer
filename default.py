@@ -45,7 +45,7 @@ def return_to_package(package):
 ADDONS = (
     ("skin.duskmate", "0.3.5"),
     ("plugin.video.duskmate", "6.21.5.31"),
-    ("service.duskmate.upnext", "1.4.1.1"),
+    ("service.duskmate.upnext", "1.4.1.2"),
 )
 EMBEDDED_DEPENDENCIES = (
     ("script.module.duskmate.infotagger", "0.1.0.2"),
@@ -59,9 +59,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.9.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.13.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.9"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.13"
 
 # Exact product-owned packages.  The uninstall route intentionally does not discover packages
 # by filesystem wildcard: a future third-party add-on must never be removed merely because its

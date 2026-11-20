@@ -59,9 +59,13 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.13.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.14.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.13"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.14"
+
+PINNED_PACKAGES = dict(
+    ADDONS + EMBEDDED_DEPENDENCIES + (TRAKT_ADDON,)
+)
 
 # Exact product-owned packages.  The uninstall route intentionally does not discover packages
 # by filesystem wildcard: a future third-party add-on must never be removed merely because its
@@ -534,6 +538,48 @@ def uninstall_duskmate(return_package=DUSKMATE_ANDROID_PACKAGE):
     return_to_package(return_package)
 
 
+def install_pinned_addon(addon_id, return_package=DUSKMATE_ANDROID_PACKAGE):
+    """Install one explicitly allowlisted product package through the RPC bridge."""
+    expected_version = PINNED_PACKAGES.get(addon_id)
+    if not expected_version:
+        xbmc.log(
+            "Duskmate installer: rejected unsupported package {}".format(addon_id),
+            xbmc.LOGERROR,
+        )
+        return False
+
+    window = xbmcgui.Window(10000)
+    if window.getProperty(RUNNING_PROPERTY) == "true":
+        return False
+    window.setProperty(RUNNING_PROPERTY, "true")
+    monitor = xbmc.Monitor()
+    try:
+        if not ready(addon_id, expected_version):
+            if not install(addon_id, expected_version, monitor):
+                xbmc.log(
+                    "Duskmate installer: installation timed out for {}".format(addon_id),
+                    xbmc.LOGERROR,
+                )
+                return False
+        if not wait_for(addon_id, expected_version, monitor):
+            return False
+        if not enable_addon(addon_id):
+            return False
+        xbmc.executebuiltin("UpdateLocalAddons")
+        if addon_id == "skin.duskmate" and not activate_skin(monitor):
+            return False
+        xbmc.log(
+            "Duskmate installer: pinned package ready: {} {}".format(
+                addon_id, expected_version
+            ),
+            xbmc.LOGINFO,
+        )
+        return True
+    finally:
+        window.clearProperty(RUNNING_PROPERTY)
+        return_to_package(return_package)
+
+
 if __name__ == "__main__":
     args = arguments()
     action = args.get("action", "install").lower()
@@ -543,14 +589,18 @@ if __name__ == "__main__":
     elif action == "uninstall":
         uninstall_duskmate(return_package=return_package)
     elif action == "install":
-        deploy(
-            force=True,
-            include_helper=(enabled(args, "helper") if "helper" in args else True),
-            include_skin=enabled(args, "skin"),
-            include_upnext=enabled(args, "upnext"),
-            include_trakt=enabled(args, "trakt"),
-            skin_only=enabled(args, "skin_only"),
-            return_package=return_package,
-        )
+        addon_id = args.get("addonid", "")
+        if addon_id:
+            install_pinned_addon(addon_id, return_package=return_package)
+        else:
+            deploy(
+                force=True,
+                include_helper=(enabled(args, "helper") if "helper" in args else True),
+                include_skin=enabled(args, "skin"),
+                include_upnext=enabled(args, "upnext"),
+                include_trakt=enabled(args, "trakt"),
+                skin_only=enabled(args, "skin_only"),
+                return_package=return_package,
+            )
     else:
         xbmc.log("Duskmate installer: unsupported action {}".format(action), xbmc.LOGERROR)

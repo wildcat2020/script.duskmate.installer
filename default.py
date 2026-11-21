@@ -44,7 +44,7 @@ def return_to_package(package):
 
 ADDONS = (
     ("skin.duskmate", "0.3.5"),
-    ("plugin.video.duskmate", "6.21.5.32"),
+    ("plugin.video.duskmate", "6.21.5.44"),
     ("service.duskmate.upnext", "1.4.1.2"),
 )
 EMBEDDED_DEPENDENCIES = (
@@ -59,9 +59,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.15.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.16.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.15"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.16"
 
 PINNED_PACKAGES = dict(
     ADDONS + EMBEDDED_DEPENDENCIES + (TRAKT_ADDON,)

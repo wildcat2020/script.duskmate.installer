@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import base64
 import xml.etree.ElementTree as ET
 
 import xbmc
@@ -59,9 +60,9 @@ OFFICIAL_DEPENDENCIES = (
 )
 TRAKT_ADDON = ("script.module.duskmate.sync.trakt", "1.2.9.11")
 MARKER = xbmcvfs.translatePath(
-    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.16.done"
+    "special://profile/addon_data/script.duskmate.installer/bootstrap-1.0.17.done"
 )
-RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.16"
+RUNNING_PROPERTY = "Duskmate.InstallerRunning.1.0.17"
 
 PINNED_PACKAGES = dict(
     ADDONS + EMBEDDED_DEPENDENCIES + (TRAKT_ADDON,)
@@ -83,6 +84,72 @@ DUSKMATE_PACKAGES = (
     "repository.duskmate",
     "script.duskmate.installer",
 )
+
+BACKUP_PROPERTY = "Duskmate.Backup.Payload"
+
+
+def backup_duskmate_configuration():
+    """Expose a small settings snapshot through a Kodi window property for local RPC.
+
+    Only exact product-owned, currently installed add-ons are included. Kodi databases,
+    sources, media, thumbnails and unrelated add-ons are deliberately outside this format.
+    """
+    components = {}
+    for addon_id in DUSKMATE_PACKAGES:
+        if not installed_version(addon_id):
+            continue
+        settings_path = xbmcvfs.translatePath(
+            "special://profile/addon_data/{}/settings.xml".format(addon_id)
+        )
+        values = {}
+        if xbmcvfs.exists(settings_path):
+            try:
+                root = ET.parse(settings_path).getroot()
+                for node in root.findall(".//setting"):
+                    setting_id = node.attrib.get("id", "")
+                    if setting_id:
+                        values[setting_id] = node.text or node.attrib.get("value", "")
+            except (ET.ParseError, OSError):
+                xbmc.log("Duskmate installer: could not read {}".format(settings_path), xbmc.LOGWARNING)
+        components[addon_id] = {
+            "version": installed_version(addon_id),
+            "settings": values,
+        }
+    payload = json.dumps({
+        "format": "duskmate-kodi-configuration",
+        "schema": 1,
+        "components": components,
+        "kodi": {
+            "skin": xbmc.getSkinDir(),
+        },
+    }, separators=(",", ":"))
+    encoded = base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+    xbmcgui.Window(10000).setProperty(BACKUP_PROPERTY, encoded)
+
+
+def restore_duskmate_configuration(encoded):
+    """Restore allowlisted settings only when that exact component is installed."""
+    try:
+        padded = encoded + "=" * ((4 - len(encoded) % 4) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8"))
+        if payload.get("format") != "duskmate-kodi-configuration" or payload.get("schema") != 1:
+            raise ValueError("unsupported backup")
+        components = payload.get("components", {})
+        restored = []
+        for addon_id in DUSKMATE_PACKAGES:
+            component = components.get(addon_id)
+            if not component or not installed_version(addon_id):
+                continue
+            addon = xbmcaddon.Addon(addon_id)
+            for setting_id, value in component.get("settings", {}).items():
+                if isinstance(setting_id, str) and isinstance(value, (str, int, float, bool)):
+                    addon.setSetting(setting_id, str(value))
+            restored.append(addon_id)
+        xbmc.log("Duskmate installer: restored settings for {}".format(", ".join(restored)), xbmc.LOGINFO)
+        return True
+    except Exception as exc:
+        xbmc.log("Duskmate installer: restore failed: {}".format(exc), xbmc.LOGERROR)
+        return False
 def installed(addon_id):
     return xbmc.getCondVisibility("System.HasAddon({})".format(addon_id))
 
@@ -586,6 +653,10 @@ if __name__ == "__main__":
     return_package = args.get("return_package", DUSKMATE_ANDROID_PACKAGE)
     if action == "return":
         return_to_package(return_package)
+    elif action == "backup":
+        backup_duskmate_configuration()
+    elif action == "restore":
+        restore_duskmate_configuration(args.get("payload", ""))
     elif action == "uninstall":
         uninstall_duskmate(return_package=return_package)
     elif action == "install":
